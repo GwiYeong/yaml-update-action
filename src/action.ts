@@ -22,6 +22,7 @@ import {
   ValueUpdates,
   ContentNode
 } from './types'
+import { fetch as undiciFetch, ProxyAgent } from 'undici'
 
 const APPEND_ARRAY_EXPRESSION = '[(@.length)]'
 
@@ -50,9 +51,24 @@ export async function run(options: Options, actions: Actions): Promise<void> {
       return
     }
 
+    const proxy = process.env.https_proxy || process.env.HTTPS_PROXY
+    let proxyFetch
+    if (proxy) {
+      actions.debug(`use https_proxy: ${proxy}`)
+      proxyFetch = (url: string, options: any) => {
+        actions.debug(`proxy fetch: [${proxy}] --> ${url}`)
+        return undiciFetch(url, {
+          ...options,
+          dispatcher: new ProxyAgent(proxy)
+        })
+      }
+    }
     const octokit = new Octokit({
       auth: options.token,
-      baseUrl: options.githubAPI
+      baseUrl: options.githubAPI,
+      request: {
+        fetch: proxyFetch
+      }
     })
 
     await gitProcessing(
@@ -88,7 +104,7 @@ export async function run(options: Options, actions: Actions): Promise<void> {
       actions.info('Pull Request already exists')
       return
     }
-
+    actions.debug((error as Error).stack ?? '')
     actions.setFailed(`failed to create PR: ${msg}`)
   }
 }
